@@ -52,14 +52,6 @@ extension HTMLFormatter {
         }
         
         private static func toJSON5(_ raw: String) -> String {
-//            let pairs = try! Regex<(Substring, Substring, Substring)>(
-//                #"\b([A-Za-z_]\w*)\s*:\s*([A-Za-z0-9-]+)\b"#
-//            )
-//            return "{\(raw)}".replacing(pairs) { (match: Regex<(Substring, Substring, Substring)>.Match) in
-//                let key = match.output.1
-//                let value = match.output.2
-//                return "\(key): '\(value)'"
-//            }
             let json = "{\(raw)}"
             let pattern = #"\b([A-Za-z_]\w*)\s*:\s*([A-Za-z0-9-]+)\b"#
             let regex = try! NSRegularExpression(pattern: pattern, options: [])

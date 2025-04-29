@@ -30,9 +30,6 @@ public struct HTMLFormatterOptions: OptionSet {
     ///   > This is a compound sentence: It contains two clauses separated by a colon.
     ///   ```
     public static let parseAsides = HTMLFormatterOptions(rawValue: 1 << 0)
-
-    /// Parse inline attributes as JSON and use the `"class"` property as the resulting span's `class`.
-    public static let parseInlineAttributeClass = HTMLFormatterOptions(rawValue: 1 << 1)
 }
 
 /// A ``MarkupWalker`` that prints rendered HTML for a given ``Markup`` tree.
@@ -40,13 +37,18 @@ public struct HTMLFormatter: MarkupWalker {
     /// The resulting HTML built up after printing.
     public private(set) var result = ""
 
+    let inlineAttributeParser: InlineAttributeParser?
     let options: HTMLFormatterOptions
-
+    
     var inTableHead = false
     var tableColumnAlignments: [Table.ColumnAlignment?]? = nil
     var currentTableColumn = 0
 
-    public init(options: HTMLFormatterOptions = []) {
+    public init(
+        inlineAttributeParser: InlineAttributeParser = .init([String:String].self),
+        options: HTMLFormatterOptions = []
+    ) {
+        self.inlineAttributeParser = inlineAttributeParser
         self.options = options
     }
 
@@ -286,38 +288,19 @@ public struct HTMLFormatter: MarkupWalker {
     }
 
     public mutating func visitInlineAttributes(_ attributes: InlineAttributes) -> () {
-        result += "<span data-attributes=\"\(attributes.attributes.replacingOccurrences(of: "\"", with: "\\\""))\""
-
-        let wrappedAttributes = "{\(attributes.attributes)}"
-        if options.contains(.parseInlineAttributeClass),
-           let attributesData = wrappedAttributes.data(using: .utf8)
-        {
-            struct ParsedAttributes: Decodable {
-                var `class`: String
-            }
-
-            let decoder = JSONDecoder()
-            // JSON5 parsing is available in Apple Foundation as of macOS 12 et al, or in Swift
-            // Foundation as of Swift 6.0
-            // Note: We don't turn on `.assumesTopLevelDictionary` to allow parsing to work on older
-            // compilers and OSs. If/when Swift-Markdown assumes a minimum Swift version of 6.0, we
-            // can clean this up to always use JSON5 and top-level dictionaries.
-            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-            if #available(macOS 12, iOS 15, tvOS 15, watchOS 8, *) {
-                decoder.allowsJSON5 = true
-            }
-            #elseif compiler(>=6.0)
-            decoder.allowsJSON5 = true
-            #endif
-
-            let parsedAttributes = try? decoder.decode(ParsedAttributes.self, from: attributesData)
-            if let parsedAttributes = parsedAttributes {
-                result += " class=\"\(parsedAttributes.class)\""
-            }
+        func append(attributes: InlineAttributes, tag: String?, tagAttributes: String?) {
+            let htmlTag = tag ?? "span"
+            let htmlAttributes = tagAttributes ?? "data-attributes=\"\(attributes.attributes.replacingOccurrences(of: "\"", with: "\\\""))\""
+            result += "<\(htmlTag) \(htmlAttributes)>"
+            descendInto(attributes)
+            result += "</\(htmlTag)>"
         }
-
-        result += ">"
-        descendInto(attributes)
-        result += "</span>"
+        
+        let markup = inlineAttributeParser?.parse(attributes: attributes.attributes)
+        append(
+            attributes: attributes,
+            tag: markup?.htmlTag,
+            tagAttributes: markup?.tagAttributes
+        )
     }
 }
